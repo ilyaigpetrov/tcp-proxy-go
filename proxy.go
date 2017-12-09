@@ -4,27 +4,28 @@ import (
   "io"
   "net"
   "sync"
+  "fmt"
 
   log "github.com/Sirupsen/logrus"
 )
 
 type Proxy struct {
   from string
-  to   string
   done chan struct{}
   log  *log.Entry
 }
 
-func NewProxy(from, to string) *Proxy {
+func NewProxy(from string) *Proxy {
+
+  log.SetLevel(log.InfoLevel)
   return &Proxy{
     from: from,
-    to:   to,
     done: make(chan struct{}),
     log: log.WithFields(log.Fields{
       "from": from,
-      "to":   to,
     }),
   }
+
 }
 
 func (p *Proxy) Start() error {
@@ -53,6 +54,8 @@ func (p *Proxy) run(listener net.Listener) {
       return
     default:
       connection, err := listener.Accept()
+      fmt.Printf("Connectoin from %s\n", connection.LocalAddr().String())
+      fmt.Printf("Connectoin to %s\n", connection.RemoteAddr().String())
       if err == nil {
         go p.handle(connection)
       } else {
@@ -63,10 +66,11 @@ func (p *Proxy) run(listener net.Listener) {
 }
 
 func (p *Proxy) handle(connection net.Conn) {
+
+  defer connection.Close()
   p.log.Debugln("Handling", connection)
   defer p.log.Debugln("Done handling", connection)
-  defer connection.Close()
-  remote, err := net.Dial("tcp", p.to)
+  remote, err := net.Dial("tcp", connection.RemoteAddr().String())
   if err != nil {
     p.log.WithField("err", err).Errorln("Error dialing remote host")
     return
@@ -77,6 +81,7 @@ func (p *Proxy) handle(connection net.Conn) {
   go p.copy(remote, connection, wg)
   go p.copy(connection, remote, wg)
   wg.Wait()
+
 }
 
 func (p *Proxy) copy(from, to net.Conn, wg *sync.WaitGroup) {
