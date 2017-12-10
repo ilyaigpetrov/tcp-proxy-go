@@ -67,6 +67,9 @@ func (p *Proxy) run(listener net.Listener) {
 
 func (p *Proxy) handle(connection net.Conn) {
   p.log.Debugln("Handling", connection)
+
+  fmt.Printf("Connection to %s\n", connection.RemoteAddr().String())
+
   defer p.log.Debugln("Done handling", connection)
   defer connection.Close()
   remote, err := net.Dial("tcp", p.to)
@@ -100,10 +103,13 @@ var remoteAddr *string = flag.String("r", "boom", "remote address")
 
 func main() {
 
+    flag.Parse()
+    log.SetLevel(log.InfoLevel)
+
     if *remoteAddr == "boom" {
       panic("Specify proxy server address!")
     }
-    NewProxy("localhost", *remoteAddr).Start()
+    NewProxy("localhost:1111", *remoteAddr).Start()
     fmt.Println("Server started.")
     select{}
 }

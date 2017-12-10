@@ -8,6 +8,7 @@ import (
   "fmt"
   "errors"
   "syscall"
+  "flag"
 
   log "github.com/Sirupsen/logrus"
 )
@@ -209,8 +210,13 @@ func itod(i uint) string {
         return string(b[bp:])
 }
 
+var remoteAddr *string = flag.String("r", "boom", "remote address")
+
 func main() {
-    NewProxy("localhost:1111").Start()
+
+    flag.Parse();
+
+    NewProxy(*remoteAddr).Start()
     fmt.Println("Server started.")
     select{}
 }
