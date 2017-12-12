@@ -176,6 +176,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
 
   if dest == connection.RemoteAddr().String() {
+    fmt.Println("FROM ITSELF!")
     return
   }
 
@@ -239,7 +240,7 @@ func main() {
       panic("Specify proxy server address!")
     }
 
-    NewProxy("0.0.0.0:1111", *remoteAddr).Start()
+    NewProxy("0.0.0.0:2222", *remoteAddr).Start()
     fmt.Println("Server started.")
     select{}
 }

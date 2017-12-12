@@ -9,6 +9,7 @@ import (
   "errors"
   "syscall"
   "flag"
+  "strings"
 
   log "github.com/Sirupsen/logrus"
 )
@@ -167,7 +168,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
   defer connection.Close()
 
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
-  if (dest == *remoteAddr) {
+  if dest == *remoteAddr || dest == strings.Replace(*remoteAddr, "0.0.0.0", "127.0.0.1", -1) {
     fmt.Printf("DESTINATION IS SELF: %s", dest)
     return // NO SELF CONNECTIONS
   }
