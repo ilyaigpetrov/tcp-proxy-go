@@ -9,16 +9,11 @@ import (
   "errors"
   "syscall"
   "flag"
-  "os"
 
   log "github.com/Sirupsen/logrus"
 )
 
 const SO_ORIGINAL_DST = 80
-
-var FILE_TO_BOOL = make( map[*os.File]bool )
-
-var DOUBLE = errors.New("Double")
 
 type Proxy struct {
   from string
@@ -87,10 +82,6 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 string, port uint16, newTCPCo
     // destination, then create a new *net.TCPConn by calling net.TCPConn.FileConn().  The new TCPConn
     // will be in non-blocking mode.  What a pain.
     clientConnFile, err := clientConn.File()
-    if FILE_TO_BOOL[clientConnFile] {
-      err = DOUBLE
-      return
-    }
     if err != nil {
         log.Infof("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
         return
@@ -117,11 +108,6 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 string, port uint16, newTCPCo
     if _, ok := newConn.(*net.TCPConn); ok {
         newTCPConn = newConn.(*net.TCPConn)
         clientConnFile.Close()
-        f, err2 := newTCPConn.File()
-        if err2 != nil {
-          return
-        }
-        FILE_TO_BOOL[f] = true
     } else {
         errmsg := fmt.Sprintf("ERR: newConn is not a *net.TCPConn, instead it is: %T (%v)", newConn, newConn)
         log.Infof("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
@@ -146,11 +132,16 @@ func (p *Proxy) run(listener net.TCPListener) {
       return
     default:
       connection, err := listener.AcceptTCP()
+      if connection == nil {
+        p.log.WithField("err", err).Errorln("Nil connection")
+        panic(err)
+      }
       la := connection.LocalAddr()
       if (la == nil) {
         panic("Connection lost!")
       }
-      fmt.Printf("Connectoin from %s\n", la.String())
+      fmt.Printf("Connection from %s\n", la.String())
+      fmt.Printf("Connection to %s\n", connection.RemoteAddr().String())
 
       if err == nil {
         go p.handle(*connection)
@@ -170,16 +161,15 @@ func (p *Proxy) handle(connection net.TCPConn) {
   var clientConn *net.TCPConn;
   ipv4, port, clientConn, err := getOriginalDst(&connection)
   if (err != nil) {
-    if err != DOUBLE {
-      panic(err)
-    }
+    panic(err)
   }
   connection = *clientConn;
+  defer connection.Close()
 
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
-
-  if dest == connection.RemoteAddr().String() {
-    return
+  if (dest == *remoteAddr) {
+    fmt.Printf("DESTINATION IS SELF: %s", dest)
+    return // NO SELF CONNECTIONS
   }
 
   addr, err := net.ResolveTCPAddr("tcp", dest)
@@ -236,6 +226,7 @@ var remoteAddr *string = flag.String("r", "boom", "remote address")
 func main() {
 
     flag.Parse();
+    log.SetLevel(log.InfoLevel)
 
     NewProxy(*remoteAddr).Start()
     fmt.Println("Server started.")

@@ -2,9 +2,7 @@
 package main
 
 import (
-  "io"
   "net"
-  "sync"
   "fmt"
   "errors"
   "syscall"
@@ -13,53 +11,15 @@ import (
   log "github.com/Sirupsen/logrus"
 )
 
-const SO_ORIGINAL_DST = 80
-
-type Proxy struct {
-  from, to string
-  fromTCP *net.TCPAddr
-  done chan struct{}
+var p = struct {
   log  *log.Entry
+}{
+  log: log.WithFields(log.Fields{
+    "This program": "is awesome",
+  }),
 }
 
-func NewProxy(from, to string) *Proxy {
-
-  log.SetLevel(log.InfoLevel)
-  return &Proxy{
-    from: from,
-    to: to,
-    done: make(chan struct{}),
-    log: log.WithFields(log.Fields{
-      "from": from,
-      "to": to,
-    }),
-  }
-
-}
-
-func (p *Proxy) Start() error {
-  p.log.Infoln("Starting proxy")
-  var err error
-  p.fromTCP, err = net.ResolveTCPAddr("tcp", p.from)
-  if (err != nil) {
-    panic(err)
-  }
-  listener, err := net.ListenTCP("tcp", p.fromTCP)
-  if err != nil {
-    return err
-  }
-  go p.run(*listener)
-  return nil
-}
-
-func (p *Proxy) Stop() {
-  p.log.Infoln("Stopping proxy")
-  if p.done == nil {
-    return
-  }
-  close(p.done)
-  p.done = nil
-}
+const SO_ORIGINAL_DST = 80
 
 func getOriginalDst(clientConn *net.TCPConn) (ipv4 string, port uint16, newTCPConn *net.TCPConn, err error) {
     if clientConn == nil {
@@ -127,41 +87,31 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 string, port uint16, newTCPCo
 }
 
 
-func (p *Proxy) run(listener net.TCPListener) {
+func run(listener net.TCPListener) {
   for {
-    select {
-    case <-p.done:
-      return
-    default:
-      connection, err := listener.AcceptTCP()
-      if connection == nil {
-        p.log.WithField("err", err).Errorln("Nil connection")
-        panic(err)
-      }
-      la := connection.LocalAddr()
-      if (la == nil) {
-        panic("Connection lost!")
-      }
-      fmt.Printf("Connection from %s\n", la.String())
+    connection, err := listener.AcceptTCP()
+    if connection == nil {
+      p.log.WithField("err", err).Errorln("Nil connection")
+      panic(err)
+    }
+    la := connection.LocalAddr()
+    if (la == nil) {
+      panic("Connection lost!")
+    }
+    fmt.Printf("Connection from 1: %s\n", la.String())
+    fmt.Printf("Connection from 2: %s\n", connection.RemoteAddr().String())
 
-      if err == nil {
-        go p.handle(*connection)
-      } else {
-        p.log.WithField("err", err).Errorln("Error accepting conn")
-      }
+    if err == nil {
+      go handle(*connection)
+    } else {
+      p.log.WithField("err", err).Errorln("Error accepting conn")
     }
   }
 }
 
-func (p *Proxy) handle(connection net.TCPConn) {
+func handle(connection net.TCPConn) {
 
   defer connection.Close()
-
-  /*
-  if connection.LocalAddr().String() == "127.0.0.1:1111" {
-    return
-  }
-  */
 
   p.log.Debugln("Handling", connection)
   defer p.log.Debugln("Done handling", connection)
@@ -175,42 +125,8 @@ func (p *Proxy) handle(connection net.TCPConn) {
 
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
 
-  if dest == connection.RemoteAddr().String() {
-    return
-  }
+  fmt.Printf("Wants to be proxied: %s\n", dest)
 
-  fmt.Printf("Proxying %s\n", dest)
-
-  toTCP, err := net.ResolveTCPAddr("tcp", p.to)
-  if err != nil {
-    panic(nil)
-  }
-  remote, err := net.DialTCP("tcp", nil, toTCP)
-  if err != nil {
-    p.log.WithField("err", err).Errorln("Error dialing remote host")
-    return
-  }
-  defer remote.Close()
-  wg := &sync.WaitGroup{}
-  wg.Add(2)
-  go p.copy(*remote, connection, wg)
-  go p.copy(connection, *remote, wg)
-  wg.Wait()
-
-}
-
-func (p *Proxy) copy(from, to net.TCPConn, wg *sync.WaitGroup) {
-  defer wg.Done()
-  select {
-  case <-p.done:
-    return
-  default:
-    if _, err := io.Copy(&to, &from); err != nil {
-      p.log.WithField("err", err).Errorln("Error from copy")
-      p.Stop()
-      return
-    }
-  }
 }
 
 func itod(i uint) string {
@@ -236,10 +152,19 @@ func main() {
     flag.Parse();
     log.SetLevel(log.InfoLevel)
     if *remoteAddr == "boom" {
-      panic("Specify proxy server address!")
+      panic("Specify server address to listen on!")
     }
 
-    NewProxy("0.0.0.0:1111", *remoteAddr).Start()
+    host, err := net.ResolveTCPAddr("tcp", *remoteAddr)
+    if (err != nil) {
+      panic(err)
+    }
+    listener, err := net.ListenTCP("tcp", host)
+    if err != nil {
+      panic(err)
+    }
+    go run(*listener)
+
     fmt.Println("Server started.")
     select{}
 }
