@@ -142,7 +142,6 @@ func (p *Proxy) run(listener net.TCPListener) {
         panic("Connection lost!")
       }
       fmt.Printf("Connection from %s\n", la.String())
-      fmt.Printf("Connection to %s\n", connection.RemoteAddr().String())
 
       if err == nil {
         go p.handle(*connection)
@@ -177,7 +176,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
   if err != nil {
     panic(err)
   }
-  fmt.Printf("Connectoin to %s\n", dest)
+  fmt.Printf("Connection to %s\n", dest)
   remote, err := net.DialTCP("tcp", nil, addr)
   if err != nil {
     p.log.WithField("err", err).Errorln("Error dialing remote host")

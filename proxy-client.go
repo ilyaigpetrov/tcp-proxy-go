@@ -142,7 +142,7 @@ func (p *Proxy) run(listener net.TCPListener) {
       if (la == nil) {
         panic("Connection lost!")
       }
-      fmt.Printf("Connection from %s\n", la.String())
+      // fmt.Printf("Connection from %s\n", la.String()) // Always prints this porcess address
 
       if err == nil {
         go p.handle(*connection)
@@ -166,6 +166,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
   p.log.Debugln("Handling", connection)
   defer p.log.Debugln("Done handling", connection)
 
+  /*
   var clientConn *net.TCPConn;
   ipv4, port, clientConn, err := getOriginalDst(&connection)
   if (err != nil) {
@@ -174,8 +175,12 @@ func (p *Proxy) handle(connection net.TCPConn) {
   connection = *clientConn;
 
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
+  */
 
-  if dest == connection.RemoteAddr().String() {
+  dest := "0.0.0.0:2222"
+  dest2 := "127.0.0.1:2222"
+  ra := connection.RemoteAddr().String();
+  if dest == ra || dest2 == ra {
     fmt.Println("FROM ITSELF!")
     return
   }
