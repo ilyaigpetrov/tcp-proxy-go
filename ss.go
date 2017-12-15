@@ -6,8 +6,6 @@ import (
   "net"
   "sync"
   "fmt"
-  "errors"
-  "syscall"
   "flag"
   "strings"
 
@@ -15,8 +13,6 @@ import (
   "github.com/google/gopacket"
   "github.com/google/gopacket/layers"
 )
-
-const SO_ORIGINAL_DST = 80
 
 type Proxy struct {
   from string
@@ -61,72 +57,6 @@ func (p *Proxy) Stop() {
   close(p.done)
   p.done = nil
 }
-
-func getOriginalDst(clientConn *net.TCPConn) (ipv4 string, port uint16, newTCPConn *net.TCPConn, err error) {
-    if clientConn == nil {
-        log.Debugf("copy(): oops, dst is nil!")
-        err = errors.New("ERR: clientConn is nil")
-        return
-    }
-
-    // test if the underlying fd is nil
-    remoteAddr := clientConn.RemoteAddr()
-    if remoteAddr == nil {
-        log.Debugf("getOriginalDst(): oops, clientConn.fd is nil!")
-        err = errors.New("ERR: clientConn.fd is nil")
-        return
-    }
-
-    srcipport := fmt.Sprintf("%v", clientConn.RemoteAddr())
-
-    newTCPConn = nil
-    // net.TCPConn.File() will cause the receiver's (clientConn) socket to be placed in blocking mode.
-    // The workaround is to take the File returned by .File(), do getsockopt() to get the original
-    // destination, then create a new *net.TCPConn by calling net.TCPConn.FileConn().  The new TCPConn
-    // will be in non-blocking mode.  What a pain.
-    clientConnFile, err := clientConn.File()
-    if err != nil {
-        log.Infof("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
-        return
-    } else {
-        clientConn.Close()
-    }
-
-    // Get original destination
-    // this is the only syscall in the Golang libs that I can find that returns 16 bytes
-    // Example result: &{Multiaddr:[2 0 31 144 206 190 36 45 0 0 0 0 0 0 0 0] Interface:0}
-    // port starts at the 3rd byte and is 2 bytes long (31 144 = port 8080)
-    // IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
-    addr, err :=  syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
-    log.Debugf("getOriginalDst(): SO_ORIGINAL_DST=%+v\n", addr)
-    if err != nil {
-        log.Infof("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
-        return
-    }
-    newConn, err := net.FileConn(clientConnFile)
-    if err != nil {
-        log.Infof("GETORIGINALDST|%v->?->%v|ERR: could not create a FileConn fron clientConnFile=%+v: %v", srcipport, addr, clientConnFile, err)
-        return
-    }
-    if _, ok := newConn.(*net.TCPConn); ok {
-        newTCPConn = newConn.(*net.TCPConn)
-        clientConnFile.Close()
-    } else {
-        errmsg := fmt.Sprintf("ERR: newConn is not a *net.TCPConn, instead it is: %T (%v)", newConn, newConn)
-        log.Infof("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
-        err = errors.New(errmsg)
-        return
-    }
-
-    ipv4 = itod(uint(addr.Multiaddr[4])) + "." +
-           itod(uint(addr.Multiaddr[5])) + "." +
-           itod(uint(addr.Multiaddr[6])) + "." +
-           itod(uint(addr.Multiaddr[7]))
-    port = uint16(addr.Multiaddr[2]) << 8 + uint16(addr.Multiaddr[3])
-
-    return
-}
-
 
 func (p *Proxy) run(listener net.TCPListener) {
   for {
@@ -179,7 +109,8 @@ func (p *Proxy) handle(connection net.TCPConn) {
   // Decode a packet
   packet := gopacket.NewPacket(data, layers.LayerTypeIPv4, gopacket.Default)
   // Get the TCP layer from this packet
-  if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+  ipLayer := packet.Layer(layers.LayerTypeIPv4)
+  if ipLayer != nil {
       // Get actual TCP data from this layer
       ip, _ := ipLayer.(*layers.IPv4)
       fmt.Printf("From src %d to dst %d\n", ip.SrcIP, ip.DstIP)
@@ -187,16 +118,27 @@ func (p *Proxy) handle(connection net.TCPConn) {
   }
   fmt.Printf("Destination is: %s\n", dest)
 
+  tcpBuf := gopacket.NewSerializeBuffer()
+  opts := gopacket.SerializeOptions{
+    ComputeChecksums: true,
+  }  // See SerializeOptions for more details.
 
-  // Decode a packet
-  packet2 := gopacket.NewPacket(data, layers.LayerTypeIPv4, gopacket.Default)
   // Get the TCP layer from this packet
-  if tcpLayer := packet2.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+  if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
       fmt.Println("This is a TCP packet!")
       // Get actual TCP data from this layer
+
       tcp, _ := tcpLayer.(*layers.TCP)
+
+      tcp.SetNetworkLayerForChecksum(packet.NetworkLayer())
+
       fmt.Printf("From src port %d to dst port %d\n", tcp.SrcPort, tcp.DstPort)
       dest = fmt.Sprintf("%s:%d", dest, tcp.DstPort)
+
+      err := tcp.SerializeTo(tcpBuf, opts)
+      if err != nil {
+        panic(err)
+      }
   } else {
     fmt.Println("NOT TCP!")
     return
@@ -232,7 +174,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
     return
   }
   defer remote.Close()
-  remote.Write(data)
+  remote.Write(tcpBuf.Bytes())
 
 }
 
@@ -248,22 +190,6 @@ func (p *Proxy) copy(from, to net.TCPConn, wg *sync.WaitGroup) {
       return
     }
   }
-}
-
-func itod(i uint) string {
-        if i == 0 {
-                return "0"
-        }
-
-        // Assemble decimal in reverse order.
-        var b [32]byte
-        bp := len(b)
-        for ; i > 0; i /= 10 {
-                bp--
-                b[bp] = byte(i%10) + '0'
-        }
-
-        return string(b[bp:])
 }
 
 var remoteAddr *string = flag.String("r", "boom", "remote address")
