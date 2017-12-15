@@ -58,9 +58,8 @@ func handle(data []byte) {
   }
 
   // Decode a packet
-  packet2 := gopacket.NewPacket(data, layers.LayerTypeIPv4, gopacket.Default)
   // Get the TCP layer from this packet
-  if tcpLayer := packet2.Layer(layers.LayerTypeTCP); tcpLayer != nil {
+  if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
       fmt.Println("This is a TCP packet!")
       // Get actual TCP data from this layer
       tcp, _ := tcpLayer.(*layers.TCP)
@@ -68,13 +67,6 @@ func handle(data []byte) {
       dest = fmt.Sprintf("%s:%d", dest, tcp.DstPort)
   }
   fmt.Printf("Proxying %s\n", dest)
-
-
-
-
-
-  fmt.Println("lock")
-  mutex.Lock()
 
   fmt.Println("write data...")
   // b := buf.Bytes()
@@ -91,7 +83,6 @@ func handle(data []byte) {
     }
   }
 
-  mutex.Unlock()
 
 }
 
