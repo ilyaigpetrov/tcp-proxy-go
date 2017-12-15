@@ -1,8 +1,11 @@
-sudo iptables -D OUTPUT -p tcp -m tcp --dport 80  -j NFQUEUE --queue-num 13 -m owner ! --gid-owner proxyclient
-sudo iptables -D OUTPUT -p tcp -m tcp --dport 443 -j NFQUEUE --queue-num 13 -m owner ! --gid-owner proxyclient
-sudo iptables -A OUTPUT -p tcp -m tcp --dport 80  -j NFQUEUE --queue-num 13 -m owner ! --gid-owner proxyclient
-sudo iptables -A OUTPUT -p tcp -m tcp --dport 443 -j NFQUEUE --queue-num 13 -m owner ! --gid-owner proxyclient
-
+sudo iptables -D OUTPUT -p tcp -m tcp --dport 80  -j NFQUEUE --queue-num 14 -m owner ! --gid-owner proxyclient
+sudo iptables -D OUTPUT -p tcp -m tcp --dport 443 -j NFQUEUE --queue-num 14 -m owner ! --gid-owner proxyclient
+sudo iptables -A OUTPUT -p tcp -m tcp --dport 80  -j NFQUEUE --queue-num 14 -m owner ! --gid-owner proxyclient
+sudo iptables -A OUTPUT -p tcp -m tcp --dport 443 -j NFQUEUE --queue-num 14 -m owner ! --gid-owner proxyclient
+#sudo iptables -D INPUT -p tcp -m tcp -j NFQUEUE --queue-num 13
+#sudo iptables -D INPUT -p tcp -m tcp -j NFQUEUE --queue-num 13
+#sudo iptables -A INPUT -p tcp -m tcp -j NFQUEUE --queue-num 13
+#sudo iptables -A INPUT -p tcp -m tcp -j NFQUEUE --queue-num 13
 
 #sudo iptables -t nat -D OUTPUT -p tcp -m tcp --dport 80 -j REDIRECT --to-ports $1 -m owner ! --gid-owner proxyclient
 #sudo iptables -t nat -D OUTPUT -p tcp -m tcp --dport 443 -j REDIRECT --to-ports $1 -m owner ! --gid-owner proxyclient

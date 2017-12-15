@@ -5,7 +5,6 @@ import (
   "fmt"
   "syscall"
   "flag"
-  "sync"
   "strings"
 
   "github.com/chifflier/nfqueue-go/nfqueue"
@@ -18,11 +17,10 @@ func run(payload *nfqueue.Payload) int {
   fmt.Println("run")
   handle(payload.Data)
   fmt.Println("DROP")
-  return nfqueue.NF_DROP
+  payload.SetVerdict(nfqueue.NF_DROP)
+  return 0
 
 }
-
-var mutex = &sync.Mutex{}
 
 func handle(data []byte) {
 
@@ -46,7 +44,8 @@ func handle(data []byte) {
   // Decode a packet
   packet := gopacket.NewPacket(data, layers.LayerTypeIPv4, gopacket.Default)
   // Get the TCP layer from this packet
-  if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+  ipLayer := packet.Layer(layers.LayerTypeIPv4)
+  if ipLayer != nil {
       // Get actual TCP data from this layer
       ip, _ := ipLayer.(*layers.IPv4)
       fmt.Printf("From src port %d to dst port %d\n", ip.SrcIP, ip.DstIP)
@@ -65,12 +64,14 @@ func handle(data []byte) {
       tcp, _ := tcpLayer.(*layers.TCP)
       fmt.Printf("From src port %d to dst port %d\n", tcp.SrcPort, tcp.DstPort)
       dest = fmt.Sprintf("%s:%d", dest, tcp.DstPort)
+  } else {
+    fmt.Println("NOT TCP")
+    return
   }
   fmt.Printf("Proxying %s\n", dest)
 
   fmt.Println("write data...")
-  // b := buf.Bytes()
-  b := data
+  b := ipLayer.LayerPayload()
   wcount := 0
   for {
     wc, err := remote.Write(b)
@@ -107,7 +108,7 @@ func main() {
     q.Unbind(syscall.AF_INET)
     q.Bind(syscall.AF_INET)
 
-    q.CreateQueue(13)
+    q.CreateQueue(14)
 
     q.Loop()
     q.DestroyQueue()

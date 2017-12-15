@@ -1,1 +1,1 @@
-source <(head -2 nfq.sh)
+source <(head -4 nfq.sh)
