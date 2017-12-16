@@ -71,7 +71,10 @@ func handle(data []byte) {
   fmt.Printf("Proxying %s\n", dest)
 
   fmt.Println("write data...")
-  b := ipLayer.LayerPayload()
+
+  b := data
+
+  //fmt.Println("HEX", hex.Dump(b))
   wcount := 0
   for {
     wc, err := remote.Write(b)

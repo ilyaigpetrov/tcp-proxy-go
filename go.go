@@ -6,6 +6,7 @@ import (
   "syscall"
   "strings"
   "sort"
+  "io"
 
   "github.com/chifflier/nfqueue-go/nfqueue"
   "github.com/google/gopacket"
@@ -37,9 +38,10 @@ func runInput(payload *nfqueue.Payload) int {
 func runOutput(payload *nfqueue.Payload) int {
 
   fmt.Println("run out")
-  handleOutput(payload.Data)
-  fmt.Println("DROP")
-  payload.SetVerdict(nfqueue.NF_STOLEN)
+  if handleOutput(payload) != true {
+    fmt.Println("DROP")
+    payload.SetVerdict(nfqueue.NF_DROP)
+  }
   return 0
 
 }
@@ -77,9 +79,10 @@ func handleInput(payload *nfqueue.Payload) bool {
 
 }
 
-func handleOutput(data []byte) {
+func handleOutput(payload *nfqueue.Payload) bool {
 
   fmt.Println("handle")
+  data := payload.Data
 
   var dst string
   var src string
@@ -113,7 +116,7 @@ func handleOutput(data []byte) {
 
   } else {
     fmt.Println("NOT TCP!")
-    return
+    return false
   }
 
   fmt.Printf("Proxying %s\n", dst)
@@ -133,7 +136,24 @@ func handleOutput(data []byte) {
   }
   // defer remote.Close()
   remote.Write(tcpLayer.LayerPayload())
-  ADDR_TO_CONN[toPair([]string{src,dst})] = remote
+  // ADDR_TO_CONN[toPair([]string{src,dst})] = remote
+
+  ans := make([]byte, 0, 4096) // big buffer
+  tmp := make([]byte, 256)     // using small tmo buffer for demonstrating
+  for {
+      n, err := remote.Read(tmp)
+      if err != nil {
+        if err != io.EOF {
+              fmt.Println("read error:", err)
+          }
+          break
+      }
+      fmt.Println("got", n, "bytes.")
+      ans = append(ans, tmp[:n]...)
+  }
+
+  payload.SetVerdictModified(nfqueue.NF_ACCEPT, ans)
+  return true
 
 }
 

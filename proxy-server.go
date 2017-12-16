@@ -1,5 +1,9 @@
-// https://gist.github.com/ericflo/7dcf4179c315d8bd714c
 package main
+/*
+#include <netinet/in.h>
+#include <arpa/inet.h>
+*/
+import "C"
 
 import (
   "io"
@@ -9,7 +13,8 @@ import (
   "errors"
   "syscall"
   "flag"
-  "strings"
+  "golang.org/x/net/ipv4"
+  "encoding/binary"
 
   log "github.com/Sirupsen/logrus"
 )
@@ -152,19 +157,70 @@ func (p *Proxy) run(listener net.TCPListener) {
   }
 }
 
+
+
+func ip2int(ip net.IP) uint32 {
+  if len(ip) == 16 {
+    return binary.BigEndian.Uint32(ip[12:16])
+  }
+  return binary.BigEndian.Uint32(ip)
+}
+
 func (p *Proxy) handle(connection net.TCPConn) {
 
   defer connection.Close()
   p.log.Debugln("Handling", connection)
   defer p.log.Debugln("Done handling", connection)
 
-  var clientConn *net.TCPConn;
-  ipv4, port, clientConn, err := getOriginalDst(&connection)
-  if (err != nil) {
-    panic(err)
+  buf := make([]byte, 0, 8186) // big buffer
+  tmp := make([]byte, 4096)     // using small tmo buffer for demonstrating
+  for {
+      n, err := connection.Read(tmp)
+      if err != nil {
+        if err != io.EOF {
+              fmt.Println("read error:", err)
+          }
+          break
+      }
+      fmt.Println("got", n, "bytes.")
+      buf = append(buf, tmp[:n]...)
+      header, err := ipv4.ParseHeader(buf)
+      if err != nil {
+        fmt.Println("Couldn't parse packet, dropping connnection.")
+        return
+      }
+      if (header.TotalLen > len(buf)) {
+        fmt.Println("Reading more up to %d\n", header.TotalLen)
+        continue
+      }
+      packetData := buf[0:header.TotalLen]
+      fmt.Printf("PACKET LEN:%d, bufLen:%d\n", header.TotalLen, len(buf))
+      buf = buf[header.TotalLen:]
+      fmt.Printf("Packet to %s\n", header.Dst)
+
+
+      s, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
+      if err != nil {
+        fmt.Printf("Error", err)
+        return
+      }
+
+
+      var arr [4]byte
+      copy(arr[:], header.Dst.To4()[:4])
+      addr := syscall.SockaddrInet4{
+        Addr: arr,
+      }
+
+      //addr := ip2int(header.Dst)
+
+      //sin.sin_addr = C.struct_in_addr{ s_addr: addr }
+      syscall.Sendto (s, packetData, 0, &addr)
+
   }
-  connection = *clientConn;
-  defer connection.Close()
+
+
+  /*
 
   dest := ipv4 + ":" + fmt.Sprintf("%d", port)
   if dest == *remoteAddr || dest == strings.Replace(*remoteAddr, "0.0.0.0", "127.0.0.1", -1) {
@@ -188,6 +244,7 @@ func (p *Proxy) handle(connection net.TCPConn) {
   go p.copy(*remote, connection, wg)
   go p.copy(connection, *remote, wg)
   wg.Wait()
+  */
 
 }
 
