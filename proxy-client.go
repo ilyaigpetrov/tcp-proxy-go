@@ -16,8 +16,8 @@ func run(payload *nfqueue.Payload) int {
 
   fmt.Println("run")
   handle(payload.Data)
-  fmt.Println("DROP")
-  payload.SetVerdict(nfqueue.NF_DROP)
+  fmt.Println("STOLLEN")
+  payload.SetVerdict(2)
   return 0
 
 }

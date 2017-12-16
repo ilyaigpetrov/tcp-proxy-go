@@ -1,3 +1,5 @@
+package main
+
 func main() {
 
   fromTCP, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1111")
